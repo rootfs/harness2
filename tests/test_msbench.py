@@ -155,6 +155,36 @@ class MSBenchContracts(unittest.TestCase):
         self.assertIsNone(report["library"]["retained"])
         self.assertEqual(report["library"]["entries"], [])
 
+    def test_frozen_confirmation_reuses_experience_without_appending(self):
+        first = self.job(1)
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            run_worker(first)
+            second = self.job(2, library=Path(first["params"]["outputDir"]) / "harness2-library")
+            second["protocol"]["libraryMode"] = "confirmation"
+            report = run_worker(second)
+        self.assertTrue(any(FixtureBridge.instances[-1].library_observed))
+        self.assertEqual(report["library"]["entries"], report["library"]["priorEntries"])
+        self.assertIsNone(report["library"]["retained"])
+        snapshots = []
+        for job in [first, second]:
+            root = Path(job["params"]["outputDir"]) / "harness2-library"
+            snapshots.append({
+                path.relative_to(root).as_posix(): path.read_bytes()
+                for path in root.rglob("*") if path.is_file()
+            })
+        self.assertEqual(*snapshots)
+
+    def test_repeated_public_task_is_rejected_before_any_model_attempt(self):
+        first = self.job(1)
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            run_worker(first)
+            second = self.job(2, library=Path(first["params"]["outputDir"]) / "harness2-library")
+            second["params"]["runContext"]["prompts"] = first["params"]["runContext"]["prompts"]
+            with self.assertRaisesRegex(NativeIntegrityError, "already a source"):
+                run_worker(second)
+        self.assertEqual(FixtureBridge.instances[-1].native_reports, [])
+        self.assertFalse((Path(second["params"]["repoDir"]) / "answer.txt").exists())
+
     def test_native_channel_never_retries_a_failed_session(self):
         calls = []
 

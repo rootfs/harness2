@@ -389,6 +389,11 @@ def run_worker(job: dict) -> dict:
         shutil.copytree(incoming, library_root)
     library = Library(library_root, namespace, adapter.substrate.surface())
     prior_entries = library.entries()
+    if (
+        job["variant"]["arm"] == "adapted"
+        and "source_" + public_hash in prior_entries
+    ):
+        raise NativeIntegrityError("Current task is already a source in the incoming library")
     baseline_dir = adapter.execute(task_id, None, "base1")
     base = RunView(
         "base1", "base1", baseline_dir, True, adapter.delivered(baseline_dir), cost_usd=None
