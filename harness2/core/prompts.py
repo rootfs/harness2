@@ -658,6 +658,30 @@ def _build_surface_texts() -> dict[str, _SurfaceText]:
             ),
             tts_surface=cx_tts,
         ),
+        "copilot": _SurfaceText(
+            surface_md=(
+                "# WHAT YOU CAN CHANGE\n\n"
+                "Edit only `context/harness/copilot-profile.json`, preserving its JSON schema. "
+                "It selects supported native Copilot configuration: reusable append-only guidance, "
+                "advertised reasoning effort and bounded native policy controls. `files` must remain []. "
+                "Keep model identity, permissions, the agent loop, tools and all executable assets fixed. "
+                "Do not create scripts, plugins, skills or alternative runners. Inspect full trajectories "
+                "before changing a setting; a configured preference does not prove it participated. "
+                "Native admission errors are delivered verbatim for one correction."
+            ),
+            inv=_INV_TEMPLATE.replace(
+                "__LOOP_LEVER__", "supported native Copilot policy configuration"
+            ),
+            dom=_DOM_TEMPLATE.replace(
+                "__TRIGGER_SENTENCE__", "Use native append guidance; executable assets stay frozen."
+            ),
+            tts_surface=(
+                "# WHAT YOU CAN CHANGE\n\n"
+                "Edit only `context/harness/solution-plan.md`: task-specific reasoning, alternative "
+                "solution plans and verification guidance. Native Copilot's harness stays unchanged. "
+                "Do not create reusable configuration, executable assets or experience-library entries."
+            ),
+        ),
     }
 
 

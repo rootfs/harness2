@@ -47,6 +47,13 @@ task-level recursion budget brings further gains.
 The release supports **parallel and sequential recursion**, **OpenCode and
 Codex executors**, and **JobBench, LAB, and WorkBuddy-Bench**.
 
+Native Copilot/MSBench integration is being added in
+`harness2.benchmarks.msbench`. The CES worker uses the existing recursion,
+selection and full-tree library code with a native single-session transport.
+Copilot model weights, execution loop and executable assets remain fixed;
+only supported configuration JSON is editable. This integration is not yet
+CES-qualified and no resolve-rate improvement is claimed.
+
 ## Video overview
 
 https://github.com/user-attachments/assets/76b10548-b14b-4c8f-9aa5-a93662df4d56

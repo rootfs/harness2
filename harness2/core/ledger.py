@@ -37,11 +37,20 @@ class BudgetError(AssertionError):
     """The ledger did not land on the budget identity."""
 
 
+def add_cost(left: float | None, right: float | None) -> float | None:
+    return None if left is None or right is None else left + right
+
+
+def total_cost(entries) -> float | None:
+    values = [entry.usd for entry in entries]
+    return None if any(value is None for value in values) else round(sum(values), 6)
+
+
 @dataclass
 class Entry:
     kind: str
     label: str
-    usd: float = 0.0
+    usd: float | None = 0.0
     cached: bool = False
     attempts: int = 1
 
@@ -55,11 +64,11 @@ class Ledger:
     k: int
     entries: list[Entry] = field(default_factory=list)
 
-    def rollout(self, label: str, usd: float = 0.0, *, cached: bool = False) -> None:
+    def rollout(self, label: str, usd: float | None = 0.0, *, cached: bool = False) -> None:
         self.entries.append(Entry("rollout", label, usd, cached))
 
     def session(
-        self, label: str, usd: float = 0.0, *, cached: bool = False, attempts: int = 1
+        self, label: str, usd: float | None = 0.0, *, cached: bool = False, attempts: int = 1
     ) -> None:
         self.entries.append(Entry("session", label, usd, cached, attempts=attempts))
 
@@ -72,16 +81,16 @@ class Ledger:
         return sum(1 for e in self.entries if e.kind == "session")
 
     @property
-    def usd(self) -> float:
-        return round(sum(e.usd for e in self.entries), 6)
+    def usd(self) -> float | None:
+        return total_cost(self.entries)
 
     @property
-    def rollout_usd(self) -> float:
-        return round(sum(e.usd for e in self.entries if e.kind == "rollout"), 6)
+    def rollout_usd(self) -> float | None:
+        return total_cost(e for e in self.entries if e.kind == "rollout")
 
     @property
-    def session_usd(self) -> float:
-        return round(sum(e.usd for e in self.entries if e.kind == "session"), 6)
+    def session_usd(self) -> float | None:
+        return total_cost(e for e in self.entries if e.kind == "session")
 
     def labels(self, kind: str) -> list[str]:
         return [e.label for e in self.entries if e.kind == kind]

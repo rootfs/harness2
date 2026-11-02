@@ -30,7 +30,7 @@ from .tree import SurfaceSpec
 
 ModelId = str
 
-CHANNELS = ("claude_cli", "opencode")
+CHANNELS = ("claude_cli", "opencode", "copilot")
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,8 @@ def resolve_channel_model(
     if kind not in CHANNELS:
         raise ValueError(f"unknown channel {kind!r}; expected one of {CHANNELS}")
     if model is None:
+        if kind == "copilot":
+            raise ValueError("copilot requires an explicit worker-admitted model")
         model = config.PROPOSER_MODEL_BY_CHANNEL[kind]
     if not model.strip():
         if use_default:
@@ -83,6 +85,8 @@ def resolve_channel_model(
             f"claude_cli channel takes a bare Anthropic id "
             f"(e.g. {config.PROPOSER_MODEL_BY_CHANNEL['claude_cli']!r}), got {model!r}"
         )
+    if kind == "copilot" and "/" in model:
+        raise ValueError("copilot takes the native worker model id, not a provider-prefixed id")
     return ChannelSpec(kind, model, effort=effort, steps=steps, timeout=timeout)
 
 
@@ -182,7 +186,7 @@ class RunView:
     run_dir: Path
     ok: bool
     delivered: bool
-    cost_usd: float = 0.0
+    cost_usd: float | None = 0.0
     wall_s: float = 0.0
     error: str = ""
 

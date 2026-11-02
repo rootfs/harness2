@@ -32,6 +32,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from .. import config
 from .spec import ChannelSpec
@@ -61,7 +62,7 @@ def _obj(d: dict, key: str) -> dict:
 class ProposerError(RuntimeError):
     """A call did not produce a usable reply. Never swallowed into an empty string."""
 
-    def __init__(self, message: str, *, attempts: int = 0, cost_usd: float = 0.0):
+    def __init__(self, message: str, *, attempts: int = 0, cost_usd: float | None = 0.0):
         super().__init__(message)
         self.attempts = attempts
         self.cost_usd = cost_usd
@@ -74,7 +75,7 @@ class Reply:
     label: str
     text: str
     ok: bool
-    cost_usd: float = 0.0
+    cost_usd: float | None = 0.0
     wall_s: float = 0.0
     attempts: int = 0
     cached: bool = False
@@ -97,6 +98,7 @@ class Proposer:
     project: str = field(default_factory=lambda: config.VERTEX_PROJECT)
     region: str = field(default_factory=lambda: config.VERTEX_REGION)
     _calls: list[Reply] = field(default_factory=list)
+    native_runner: Callable[[Path, str, str, int, str, str | None], Reply] | None = None
 
     def __post_init__(self) -> None:
         if not self.spec.model.strip():
@@ -147,6 +149,42 @@ class Proposer:
             return cached
 
         wall = int(timeout or self.spec.timeout)
+        if self.spec.kind == "copilot":
+            if self.native_runner is None:
+                raise ProposerError(
+                    "copilot requires a native session runner", attempts=0, cost_usd=None
+                )
+            tmp = Path(tempfile.mkdtemp(prefix="harness2-copilot-"))
+            try:
+                if context_dir and Path(context_dir).is_dir():
+                    shutil.copytree(context_dir, tmp / "context")
+                reply = self.native_runner(tmp, mission, system, wall, label, harvest)
+                if not reply.ok or not reply.text.strip():
+                    raise ProposerError(
+                        reply.error or "empty native reply", attempts=1, cost_usd=None
+                    )
+                if harvest:
+                    reply.workspace = self._harvest(tmp, harvest, label, cache_key)
+                    if reply.workspace is None:
+                        _drop_workspace(self._paths(label, cache_key))
+                self._write_audit(reply, mission, system, cache_key)
+                self._calls.append(reply)
+                return reply
+            except ProposerError as error:
+                failed = Reply(
+                    label=label,
+                    text="",
+                    ok=False,
+                    channel="copilot",
+                    attempts=error.attempts,
+                    error=str(error),
+                    cost_usd=error.cost_usd,
+                )
+                self._write_audit(failed, mission, system, cache_key)
+                self._calls.append(failed)
+                raise
+            finally:
+                shutil.rmtree(tmp)
         tries = max(1, int(self.attempts if max_attempts is None else max_attempts))
         last = ""
         spent_usd = 0.0

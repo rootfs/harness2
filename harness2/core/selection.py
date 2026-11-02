@@ -27,6 +27,7 @@ from typing import Callable, Sequence, TypeVar
 
 from . import context
 from . import prompts as P
+from .ledger import add_cost
 from .proposer import Proposer, ProposerError
 from .spec import BenchmarkAdapter, BenchPrompts, RunView, resolve_prompts
 
@@ -59,7 +60,7 @@ class Selection:
     ok: bool = False
     fallback: bool = False
     error: str = ""
-    usd: float = 0.0
+    usd: float | None = 0.0
     experience: dict = field(default_factory=dict)
     trivial: bool = False
     evidence: str = "deliverable"
@@ -331,7 +332,7 @@ def run_selection(
 
     try:
         reply = prop.call(mission, root, f"select.{mode}{k}")
-        sel.usd += reply.cost_usd
+        sel.usd = add_cost(sel.usd, reply.cost_usd)
         m = _CHOICE.search(reply.text)
         if not m:
             raise ValueError("no ```choice block in the reply")
@@ -345,7 +346,7 @@ def run_selection(
         sel.ok = True
     except (ProposerError, ValueError) as exc:
         if isinstance(exc, ProposerError):
-            sel.usd += exc.cost_usd
+            sel.usd = add_cost(sel.usd, exc.cost_usd)
         if not _fallback(sel, pool, pool_kind, exc):
             return sel
 
@@ -481,9 +482,9 @@ def _distil(
     try:
         reply = prop.call(mission, exp_root, f"experience.{sel.mode}{sel.k}")
     except ProposerError as exc:
-        sel.usd += exc.cost_usd
+        sel.usd = add_cost(sel.usd, exc.cost_usd)
         return {}
-    sel.usd += reply.cost_usd
+    sel.usd = add_cost(sel.usd, reply.cost_usd)
     edits = _EDITS.search(reply.text)
     if edits:
         (root / "edits.md").write_text(edits.group(1).strip() + "\n", encoding="utf-8")

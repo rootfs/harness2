@@ -29,7 +29,7 @@ from typing import Callable, Sequence
 from .. import config
 from . import context, prompts
 from . import tree as harness_tree
-from .ledger import Ledger
+from .ledger import Ledger, add_cost
 from .proposer import Proposer, ProposerError
 from .spec import BenchmarkAdapter, RunView, resolve_prompts
 
@@ -49,7 +49,7 @@ class Stage:
     fell_back: bool = False
 
     error: str = ""
-    usd: float = 0.0
+    usd: float | None = 0.0
     attempts: int = 0
     cached: bool = False
     notes: str = ""
@@ -195,10 +195,10 @@ def _run_stage(
         except ProposerError as exc:
             err = str(exc)
             spent_calls += exc.attempts or TRANSPORT_ATTEMPTS
-            spent_usd += exc.cost_usd
+            spent_usd = add_cost(spent_usd, exc.cost_usd)
             all_cached = False
             break
-        spent_usd += reply.cost_usd
+        spent_usd = add_cost(spent_usd, reply.cost_usd)
         spent_calls += 0 if reply.cached else max(1, reply.attempts)
         all_cached = all_cached and reply.cached
 
@@ -296,7 +296,10 @@ def _roll(
             error=f"{type(exc).__name__}: {exc}",
         )
     if record:
-        ledger.rollout(label)
+        cost = getattr(adapter, "run_cost_usd", None)
+        if callable(cost):
+            rv.cost_usd = cost(rv.run_dir)
+        ledger.rollout(label, rv.cost_usd)
     return rv
 
 
@@ -335,7 +338,10 @@ def _roll_many(
             )
         )
     for (label, _tree), rv in zip(items, got):
-        ledger.rollout(label)
+        cost = getattr(adapter, "run_cost_usd", None)
+        if callable(cost):
+            rv.cost_usd = cost(rv.run_dir)
+        ledger.rollout(label, rv.cost_usd)
         out[label] = rv
     return out
 
@@ -358,7 +364,7 @@ def run_parallel(
     surface = adapter.substrate.surface()
     ledger = Ledger(mode="agg", task_id=task_id, k=k)
     for r in base:
-        ledger.rollout(r.label)
+        ledger.rollout(r.label, r.cost_usd)
     result = ModeResult(mode="agg", task_id=task_id, k=k, ledger=ledger)
     result.rollouts.update({r.label: r for r in base})
     ctx_dir = work_dir / "context"
@@ -467,7 +473,7 @@ def run_sequential(
     surface = adapter.substrate.surface()
     ledger = Ledger(mode="seq", task_id=task_id, k=k)
     for r in base:
-        ledger.rollout(r.label)
+        ledger.rollout(r.label, r.cost_usd)
     result = ModeResult(mode="seq", task_id=task_id, k=k, ledger=ledger)
     result.rollouts.update({r.label: r for r in base})
     ctx_dir = work_dir / "context"
