@@ -53,6 +53,8 @@ class FixtureBridge(NativeBridge):
                         "Independently check the public task and prior attempts."
                     )
                 response = "<notes>Use observed public edge conditions.</notes>"
+            elif stage["id"].startswith("select."):
+                response = "```choice\nB\n```\n```why\nOwned fixture choice.\n```"
             else:
                 response = (
                     "<experience>\ncue: edge conditions\nlesson: inspect public boundaries\n"
@@ -98,7 +100,7 @@ class MSBenchContracts(unittest.TestCase):
         self.root = Path(self.temporary.name)
         FixtureBridge.instances = []
 
-    def job(self, step, arm="adapted", library=None):
+    def job(self, step, arm="adapted", library=None, k=None):
         source = self.root / f"source-{step}"
         output = self.root / f"output-{step}"
         source.mkdir()
@@ -119,6 +121,7 @@ class MSBenchContracts(unittest.TestCase):
             "protocol": {
                 "stageBudgetsMs": {"editor": 120000, "execute": 420000},
                 "libraryMode": "development",
+                **({"optimizerImplementation": {"k": k}} if k else {}),
             },
             "jobId": "owned",
             "libraryInput": str(library) if library else None,
@@ -154,6 +157,40 @@ class MSBenchContracts(unittest.TestCase):
         self.assertEqual(len(report["nativeReports"]), 8)
         self.assertIsNone(report["library"]["retained"])
         self.assertEqual(report["library"]["entries"], [])
+
+    def test_width_k_runs_repeated_references_candidates_and_a_real_selector(self):
+        job = self.job(1, k=2)
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            report = run_worker(job)
+        stages = [
+            json.loads(Path(path).read_text())["phases"][0]["id"] for path in report["nativeReports"]
+        ]
+        for label in ["base1", "base2", "inv1", "inv2", "dom1", "dom2", "agg1", "agg2"]:
+            self.assertIn(label, stages)
+        self.assertTrue(any(stage.startswith("select.") for stage in stages))
+        self.assertEqual(sorted(report["method"]["finals"]), ["agg1", "agg2"])
+        self.assertFalse(report["selection"]["trivial"])
+        self.assertIn(report["selection"]["chosen_label"], {"agg1", "agg2"})
+        self.assertEqual(len(report["library"]["entries"]), 1)
+
+    def test_width_k_reference_verifies_before_every_composed_execution(self):
+        job = self.job(1, arm="reference", k=2)
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            report = run_worker(job)
+        stages = [
+            json.loads(Path(path).read_text())["phases"][0]["id"] for path in report["nativeReports"]
+        ]
+        self.assertLess(stages.index("verify-control"), stages.index("agg1"))
+        self.assertLess(stages.index("verify-control-agg2"), stages.index("agg2"))
+        self.assertEqual(report["library"]["entries"], [])
+
+    def test_editor_context_explains_the_rewritten_deliverable_path(self):
+        job = self.job(1)
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            run_worker(job)
+        task = (Path(job["params"]["outputDir"]) / "context/inv1/task.md").read_text()
+        self.assertIn("Owned public mathematical task 1", task)
+        self.assertIn("isolated copy of the task workspace", task)
 
     def test_frozen_confirmation_reuses_experience_without_appending(self):
         first = self.job(1)

@@ -195,8 +195,18 @@ class MSBenchAdapter:
     def domain_of(self, task_id):
         return self.task["domain"]
 
-    def task_prompt(self, task_id):
+    def public_task(self):
         return self.bridge.params["runContext"]["prompts"][0]
+
+    def task_prompt(self, task_id):
+        # Executions run in isolated copies of the task workspace, and the runner rewrites the
+        # deliverable path in their prompt; writes there are correct, not path defects.
+        return (
+            self.public_task()
+            + "\n\n[Runner note: each recorded execution ran in an isolated copy of the task "
+            "workspace and its prompt named that copy's path for the deliverable. The runner "
+            "publishes the selected deliverable to the original location.]"
+        )
 
     def task_files(self, task_id):
         return None
@@ -219,9 +229,10 @@ class MSBenchAdapter:
             except (ValueError, TypeError) as error:
                 raise ValueError(f"Native configuration rejected: {error}") from error
 
-    def _verify_control(self, task_id, harness_dir):
+    def _verify_control(self, task_id, harness_dir, run_id="agg1"):
+        suffix = "" if run_id == "agg1" else f"-{run_id}"
         evidence = context.build(
-            self.root / "control-verification",
+            self.root / f"control-verification{suffix}",
             self,
             task_id,
             self.views,
@@ -232,7 +243,7 @@ class MSBenchAdapter:
             "Strengthen only context/harness/solution-plan.md before the final solve. "
             "Do not change the native harness or retain reusable experience.\n" + evidence.layout,
             evidence.root,
-            "verify-control",
+            f"verify-control{suffix}",
             harvest="context/harness",
             max_attempts=1,
         )
@@ -247,12 +258,15 @@ class MSBenchAdapter:
             tree.read_tree(self.substrate.surface(), harness_dir) if harness_dir else self.base_tree
         )
         self.validate_tree(value)
-        final = run_id in {"c1", "agg1"} or (
+        composed = re.fullmatch(r"(agg|c)\d+", run_id) is not None
+        # Only one session can own the published agent session id; with k > 1 the selector
+        # decides afterwards, so no composed execution is pre-declared final.
+        final = (composed and getattr(self, "k", 1) == 1) or (
             run_id == "base1" and self.job["variant"]["arm"] == "base"
         )
         brief = value[PLAN_FILE] if self.reasoning_control else ""
-        if final and self.reasoning_control:
-            brief = self._verify_control(task_id, harness_dir)
+        if composed and self.reasoning_control:
+            brief = self._verify_control(task_id, harness_dir, run_id)
         now = int(time.time() * 1000)
         result = self.bridge.invoke(
             {
@@ -377,7 +391,12 @@ def run_worker(job: dict) -> dict:
     )
     adapter.proposer = prop
     task_id = job["task"]["instance"]
-    public_hash = hashlib.sha256(adapter.task_prompt(task_id).encode()).hexdigest()
+    public_hash = hashlib.sha256(adapter.public_task().encode()).hexdigest()
+    optimizer = job["protocol"].get("optimizerImplementation", {})
+    k = int(optimizer.get("k", 1))
+    if k < 1:
+        raise ValueError("optimizerImplementation.k must be a positive integer")
+    adapter.k = k
     namespace = (
         f"model/{job['variant']['model']}"
         if job["variant"]["experiment"] == "model"
@@ -406,10 +425,15 @@ def run_worker(job: dict) -> dict:
         retained = None
         publication = publish(adapter, chosen, job)
     else:
+        bases = [base] + [
+            RunView(label, label, run_dir, True, adapter.delivered(run_dir), cost_usd=None)
+            for label in (f"base{i}" for i in range(2, k + 1))
+            for run_dir in [adapter.execute(task_id, None, label)]
+        ]
         method = recursion.run_parallel(
             task_id,
-            1,
-            [base],
+            k,
+            bases,
             adapter=adapter,
             prop=prop,
             work_dir=output,
@@ -420,13 +444,21 @@ def run_worker(job: dict) -> dict:
             rollout_workers=1,
         )
         candidates = selection.selection_pool(method.mode, method.k, method.rollouts, [base])
-        selected = selection.trivial_selection(
-            task_id,
-            1,
-            method.mode,
-            candidates,
-            adapter=adapter,
-            work_dir=output,
+        selected = (
+            selection.trivial_selection(
+                task_id, 1, method.mode, candidates, adapter=adapter, work_dir=output
+            )
+            if k == 1
+            else selection.run_selection(
+                task_id,
+                k,
+                method.mode,
+                candidates,
+                adapter=adapter,
+                prop=prop,
+                work_dir=output,
+                pool_kind="finals",
+            )
         )
         if not selected.ok:
             raise NativeIntegrityError("No completed final deliverable; publication refused")
