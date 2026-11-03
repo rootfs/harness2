@@ -192,6 +192,22 @@ class MSBenchContracts(unittest.TestCase):
         self.assertIn("Owned public mathematical task 1", task)
         self.assertIn("isolated copy of the task workspace", task)
 
+    def test_skills_protocol_lets_editors_write_triggered_native_skills(self):
+        job = self.job(1)
+        job["protocol"].update(nativeComponents=True, nativeComponentKinds=["skills"])
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            run_worker(job)
+        output = Path(job["params"]["outputDir"])
+        mission = next((output / "editor-audit").glob("inv1.*.mission.md")).read_text()
+        self.assertIn("native Copilot skills", mission)
+        self.assertNotIn("`files` must remain []", mission)
+        self.assertNotIn("Do not create scripts, plugins, skills", mission)
+        default = self.job(2)
+        with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):
+            run_worker(default)
+        frozen = next((Path(default["params"]["outputDir"]) / "editor-audit").glob("inv1.*.mission.md")).read_text()
+        self.assertIn("`files` must remain []", frozen)
+
     def test_frozen_confirmation_reuses_experience_without_appending(self):
         first = self.job(1)
         with patch("harness2.benchmarks.msbench.NativeBridge", FixtureBridge):

@@ -658,6 +658,35 @@ def _build_surface_texts() -> dict[str, _SurfaceText]:
             ),
             tts_surface=cx_tts,
         ),
+        "copilot-skills": _SurfaceText(
+            surface_md=(
+                "# WHAT YOU CAN CHANGE\n\n"
+                "Edit only `context/harness/copilot-profile.json`, preserving its JSON schema. "
+                "It selects supported native Copilot configuration: reusable append-only guidance, "
+                "advertised reasoning effort, bounded native policy controls, and native Copilot "
+                "skills in `files` (`skills/NAME.md`, loaded on demand by Copilot's skill tool). "
+                "A skill is the right home for a narrow multi-step procedure; always-on guidance is "
+                "for what every turn needs. Keep model identity, permissions, the agent loop, tools "
+                "and all executable assets fixed: do not create scripts, plugins, subagents or "
+                "alternative runners. Inspect full trajectories before changing a setting; a "
+                "configured preference does not prove it participated. Native admission errors are "
+                "delivered verbatim for one correction."
+            ),
+            inv=_INV_TEMPLATE.replace(
+                "__LOOP_LEVER__", "supported native Copilot policy configuration"
+            ),
+            dom=_DOM_TEMPLATE.replace(
+                "__TRIGGER_SENTENCE__",
+                "A skill exists only once its name appears in the instructions as a trigger: write "
+                "that trigger line in the same edit.",
+            ),
+            tts_surface=(
+                "# WHAT YOU CAN CHANGE\n\n"
+                "Edit only `context/harness/solution-plan.md`: task-specific reasoning, alternative "
+                "solution plans and verification guidance. Native Copilot's harness stays unchanged. "
+                "Do not create reusable configuration, executable assets or experience-library entries."
+            ),
+        ),
         "copilot": _SurfaceText(
             surface_md=(
                 "# WHAT YOU CAN CHANGE\n\n"

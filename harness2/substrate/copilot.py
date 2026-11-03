@@ -7,10 +7,11 @@ PLAN_FILE = "solution-plan.md"
 
 
 class CopilotSubstrate:
-    name = "copilot"
-
-    def __init__(self, *, reasoning_control=False):
+    def __init__(self, *, reasoning_control=False, skills=False):
         self.reasoning_control = reasoning_control
+        # Native skills are Copilot configuration; the compute-matched control never edits them.
+        self.skills = skills and not reasoning_control
+        self.name = "copilot-skills" if self.skills else "copilot"
 
     @property
     def editable_file(self):
@@ -24,7 +25,11 @@ class CopilotSubstrate:
             always_on_cap_reason="Bounded native configuration or task-reasoning context",
             skill_dir="skills",
             skill_name_rule="name",
-            trigger_hint="Executable assets are frozen.",
+            trigger_hint=(
+                "Name the skill in the instructions as its trigger."
+                if self.skills
+                else "Executable assets are frozen."
+            ),
             autotrigger_file=self.editable_file,
             trigger_line="",
             subagent_requires_mode=False,

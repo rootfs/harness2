@@ -151,7 +151,12 @@ class MSBenchAdapter:
         self.job = job
         self.task = job["task"]
         self.reasoning_control = job["variant"]["arm"] == "reference"
-        self.substrate = CopilotSubstrate(reasoning_control=self.reasoning_control)
+        protocol = job["protocol"]
+        self.substrate = CopilotSubstrate(
+            reasoning_control=self.reasoning_control,
+            skills=bool(protocol.get("nativeComponents"))
+            and protocol.get("nativeComponentKinds") == ["skills"],
+        )
         self.bridge.editable_file = self.substrate.editable_file
         self.initial = bridge.schema()
         self.root = bridge.output
