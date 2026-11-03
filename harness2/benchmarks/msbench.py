@@ -180,7 +180,14 @@ class MSBenchAdapter:
             inv_levers=self.initial["schema"]
             if not self.reasoning_control
             else "Use task-specific reasoning only.",
-            dom_levers="Use observed task and tool behavior; keep unsupported changes out.",
+            dom_levers=(
+                "Use observed task and tool behavior; keep unsupported changes out. A domain "
+                "procedure that later tasks in this domain could reuse belongs in a native skill "
+                "(`skills/NAME.md` in `files`) whose name the instructions name as its trigger. "
+                + self.initial["schema"]
+                if self.substrate.skills
+                else "Use observed task and tool behavior; keep unsupported changes out."
+            ),
             yardstick="Compare the public request with actual execution behavior and deliverables.",
             prompt_pack="tts" if self.reasoning_control else "adapt",
         )

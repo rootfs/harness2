@@ -200,6 +200,9 @@ class MSBenchContracts(unittest.TestCase):
         output = Path(job["params"]["outputDir"])
         mission = next((output / "editor-audit").glob("inv1.*.mission.md")).read_text()
         self.assertIn("native Copilot skills", mission)
+        domain = next((output / "editor-audit").glob("dom1.*.mission.md")).read_text()
+        self.assertIn("belongs in a native skill", domain)
+        self.assertIn("Native configuration JSON", domain)
         self.assertNotIn("`files` must remain []", mission)
         self.assertNotIn("Do not create scripts, plugins, skills", mission)
         default = self.job(2)
@@ -207,6 +210,8 @@ class MSBenchContracts(unittest.TestCase):
             run_worker(default)
         frozen = next((Path(default["params"]["outputDir"]) / "editor-audit").glob("inv1.*.mission.md")).read_text()
         self.assertIn("`files` must remain []", frozen)
+        frozen_domain = next((Path(default["params"]["outputDir"]) / "editor-audit").glob("dom1.*.mission.md")).read_text()
+        self.assertNotIn("belongs in a native skill", frozen_domain)
 
     def test_frozen_confirmation_reuses_experience_without_appending(self):
         first = self.job(1)
